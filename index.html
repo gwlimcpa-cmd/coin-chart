@@ -206,8 +206,9 @@ select{font-family:var(--f-body)}
 <div id="toasts"></div>
 <script>
 /*LOGIC-START*/
-const TF={'1m':6e4,'5m':3e5,'15m':9e5,'1h':36e5,'4h':144e5,'1d':864e5};
-const TFLABEL={'1m':'1분','5m':'5분','15m':'15분','1h':'1시간','4h':'4시간','1d':'1일'};
+const TF={'1m':6e4,'5m':3e5,'15m':9e5,'1h':36e5,'4h':144e5,'1d':864e5,'1w':6048e5,'1M':26298e5};
+const TFLABEL={'1m':'1분','5m':'5분','15m':'15분','1h':'1시간','4h':'4시간','1d':'1일','1w':'1주','1M':'1달'};
+const SIMN={'1w':500,'1M':150};
 const SYMS=[
  {s:'BTC',n:'비트코인',p:95000,v:.028},{s:'ETH',n:'이더리움',p:3300,v:.036},{s:'XRP',n:'리플',p:2.2,v:.045},
  {s:'SOL',n:'솔라나',p:180,v:.048},{s:'BNB',n:'비앤비',p:650,v:.03},{s:'DOGE',n:'도지코인',p:.21,v:.055},
@@ -293,7 +294,7 @@ function fmtPct(x){return(x>=0?'+':'')+(x*100).toFixed(2)+'%'}
 function fmtV(v){return v>=1e9?(v/1e9).toFixed(2)+'B':v>=1e6?(v/1e6).toFixed(2)+'M':v>=1e3?(v/1e3).toFixed(2)+'K':v.toFixed(2)}
 const p2=n=>String(n).padStart(2,'0');
 function tfMs(){return S.sym==='CSV'&&S.csv?S.csv.ms:TF[S.tf]}
-function fmtFull(t){const d=new Date(t);return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate())+(tfMs()<864e5?' '+p2(d.getHours())+':'+p2(d.getMinutes()):'')}
+function fmtFull(t){const d=new Date(t);return d.getFullYear()+'-'+p2(d.getMonth()+1)+(tfMs()>=28*864e5?'':'-'+p2(d.getDate()))+(tfMs()<864e5?' '+p2(d.getHours())+':'+p2(d.getMinutes()):'')}
 function symLabel(s){return s==='CSV'?(S.csv?S.csv.name:'CSV'):s+'/USDT'}
 function toast(msg,warn){const el=document.createElement('div');el.className='toast'+(warn?' warn':'');el.textContent=msg;$('#toasts').appendChild(el);setTimeout(()=>el.remove(),warn?9000:3200)}
 
@@ -354,12 +355,12 @@ function draw(){
   ctx.font='11px '+NUMF;ctx.textBaseline='middle';
   // 격자와 가격축
   const step=niceStep((L.pmax-L.pmin)/Math.max(2,L.mh/52));ctx.strokeStyle=C.line;ctx.lineWidth=1;ctx.fillStyle=C.muted;ctx.textAlign='left';
-  for(let p=Math.ceil(L.pmin/step)*step;p<L.pmax;p+=step){const y=Math.round(yOf(p))+.5;ctx.globalAlpha=.6;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(L.pw,y);ctx.stroke();ctx.globalAlpha=1;ctx.fillText(step>=1?Math.round(p).toLocaleString('en-US'):fmtP(p),L.pw+5,y)}
+  for(let p=Math.max(0,Math.ceil(L.pmin/step))*step;p<L.pmax;p+=step){const y=Math.round(yOf(p))+.5;ctx.globalAlpha=.6;ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(L.pw,y);ctx.stroke();ctx.globalAlpha=1;ctx.fillText(step>=1?Math.round(p).toLocaleString('en-US'):fmtP(p),L.pw+5,y)}
   // 시간축
-  const tstep=Math.max(1,Math.ceil(84/V.bw)),intr=tfMs()<864e5;let prevDay='';ctx.textAlign='center';
+  const tstep=Math.max(1,Math.ceil(84/V.bw)),intr=tfMs()<864e5,mon=tfMs()>=28*864e5;let prevDay='',prevYear=null;ctx.textAlign='center';
   for(let i=Math.ceil(i0/tstep)*tstep;i<=i1;i+=tstep){const x=Math.round(xOf(i))+.5,d=new Date(b[i].t),day=(d.getMonth()+1)+'/'+d.getDate();
     ctx.globalAlpha=.6;ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,L.ph);ctx.stroke();ctx.globalAlpha=1;
-    let lab=intr?(day!==prevDay?day:p2(d.getHours())+':'+p2(d.getMinutes())):(d.getMonth()===0&&prevDay&&prevDay.split('/')[0]!=='1'?String(d.getFullYear()):day);prevDay=day;
+    let lab=intr?(day!==prevDay?day:p2(d.getHours())+':'+p2(d.getMinutes())):(d.getFullYear()!==prevYear?String(d.getFullYear()):mon?(d.getMonth()+1)+'월':day);prevDay=day;if(!intr)prevYear=d.getFullYear();
     if(x>20&&x<L.pw-20)ctx.fillText(lab,x,L.ph+11)}
   ctx.save();ctx.beginPath();ctx.rect(0,0,L.pw,L.mh);ctx.clip();
   // 거래량
@@ -462,8 +463,8 @@ document.addEventListener('visibilitychange',()=>{if(document.visibilityState===
 async function loadBars(){const tok=++loadTok;S.bt=null;S.sel=-1;S.pending=null;let bars;
   if(S.sym==='CSV'&&S.csv){bars=S.csv.bars;liveWS()}
   else if(S.mode==='live'){try{bars=await liveBars(S.sym,S.tf);if(tok!==loadTok)return;S.px[S.sym]=bars[bars.length-1].c;liveWS()}catch(e){if(tok!==loadTok)return;if(S.sym!=='BTC'&&await tryLive()){if(tok!==loadTok)return;toast(S.sym+'/USDT 캔들을 불러오지 못해 BTC로 이동함');setSym('BTC');return}
-      toast('Binance에서 캔들을 받지 못해 가상 시세로 전환함',true);S.mode='sim';if(!S.px[S.sym])S.sym='BTC';bars=genBars(S.sym,S.tf,1500,S.px[S.sym],Date.now())}}
-  else{if(!S.px[S.sym])S.sym='BTC';bars=genBars(S.sym,S.tf,1500,S.px[S.sym],Date.now())}
+      toast('Binance에서 캔들을 받지 못해 가상 시세로 전환함',true);S.mode='sim';if(!S.px[S.sym])S.sym='BTC';bars=genBars(S.sym,S.tf,SIMN[S.tf]||1500,S.px[S.sym],Date.now())}}
+  else{if(!S.px[S.sym])S.sym='BTC';bars=genBars(S.sym,S.tf,SIMN[S.tf]||1500,S.px[S.sym],Date.now())}
   if(tok!==loadTok)return;S.bars=bars;resetView();dirty();renderHead();renderBt();updateSrc()}
 function updateSrc(){const el=$('#src'),csv=S.sym==='CSV',live=S.mode==='live',stale=live&&!csv&&(!S.wsAt||Date.now()-S.wsAt>15000);
   el.textContent=csv?'불러온 파일':S.mode==='wait'?'Binance 연결 중':live?(stale?'Binance 재연결 중':'실시간 Binance'):'가상 시세';el.classList.toggle('live',!csv&&live&&!stale);
